@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ma Position | Dark Mode</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --accent-color: #38bdf8;
+            --text-main: #f8fafc;
+            --text-dim: #94a3b8;
+            --danger: #fb7185;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            width: 100%;
+            max-width: 450px;
+            border-radius: 24px;
+            padding: 2rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            text-align: center;
+        }
+
+        h1 { font-size: 1.8rem; margin-bottom: 8px; }
+        p { color: var(--text-dim); margin-bottom: 24px; line-height: 1.5; }
+
+        #map {
+            height: 250px;
+            width: 100%;
+            border-radius: 16px;
+            margin-bottom: 20px;
+            background: #020617;
+            display: none; /* Masqué par défaut */
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .coords-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .coord-item {
+            background: rgba(15, 23, 42, 0.5);
+            padding: 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .label {
+            font-size: 0.7rem;
+            color: var(--accent-color);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 4px;
+        }
+
+        .value { font-weight: 600; font-family: 'Courier New', monospace; font-size: 1.1rem; }
+
+        .btn {
+            background: var(--accent-color);
+            color: #000;
+            border: none;
+            padding: 16px;
+            border-radius: 14px;
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn:hover { background: #7dd3fc; transform: translateY(-2px); }
+        .btn:active { transform: translateY(0); }
+
+        .error-container {
+            margin-top: 15px;
+            color: var(--danger);
+            font-size: 0.9rem;
+            min-height: 20px;
+        }
+
+        /* Animation simple pour le chargement */
+        .loading { opacity: 0.6; pointer-events: none; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h1>Où suis-je ?</h1>
+    <p id="status">Autorisez l'accès pour voir votre position sur la carte.</p>
+
+    <div id="map"></div>
+
+    <div class="coords-grid">
+        <div class="coord-item">
+            <div class="label">Latitude</div>
+            <div id="lat" class="value">--</div>
+        </div>
+        <div class="coord-item">
+            <div class="label">Longitude</div>
+            <div id="lng" class="value">--</div>
+        </div>
+    </div>
+
+    <button id="btn-geo" class="btn" onclick="startTracking()">
+        Activer la Géolocalisation
+    </button>
+
+    <div id="error-msg" class="error-container"></div>
+</div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+    let map;
+    let marker;
+
+    function startTracking() {
+        const btn = document.getElementById('btn-geo');
+        const errorDiv = document.getElementById('error-msg');
+        const statusText = document.getElementById('status');
+
+        errorDiv.textContent = "";
+        
+        // 1. Verification Securité (Protocole)
+        if (window.location.protocol === 'file:') {
+            errorDiv.innerHTML = "<strong>Attention:</strong> Le GPS ne fonctionne pas en mode 'Fichier local'. <br>Utilisez un serveur (HTTPS) pour tester.";
+            return;
+        }
+
+        if (!navigator.geolocation) {
+            errorDiv.textContent = "Votre navigateur ne supporte pas la géolocalisation.";
+            return;
+        }
+
+        btn.classList.add('loading');
+        statusText.textContent = "Demande d'autorisation...";
+
+        navigator.geolocation.getCurrentPosition(success, error, {
+            enableHighAccuracy: true,
+            timeout: 8000,
+            maximumAge: 0
+        });
+    }
+
+    function success(position) {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        const btn = document.getElementById('btn-geo');
+
+        document.getElementById('lat').textContent = lat.toFixed(5);
+        document.getElementById('lng').textContent = lng.toFixed(5);
+        document.getElementById('status').textContent = "Position détectée avec succès !";
+        btn.classList.remove('loading');
+        btn.textContent = "Actualiser ma position";
+
+        // Afficher la carte
+        const mapDiv = document.getElementById('map');
+        mapDiv.style.display = "block";
+
+        if (!map) {
+            // Initialisation de la carte (Mode Sombre via CartoDB)
+            map = L.map('map').setView([lat, lng], 15);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; OpenStreetMap &copy; CARTO'
+            }).addTo(map);
+            marker = L.marker([lat, lng]).addTo(map);
+        } else {
+            map.setView([lat, lng], 15);
+            marker.setLatLng([lat, lng]);
+        }
+    }
+
+    function error(err) {
+        const btn = document.getElementById('btn-geo');
+        const errorDiv = document.getElementById('error-msg');
+        btn.classList.remove('loading');
+
+        switch(err.code) {
+            case 1:
+                errorDiv.textContent = "Accès refusé. Activez la position dans les réglages du navigateur.";
+                break;
+            case 2:
+                errorDiv.textContent = "Position impossible à déterminer (Signal GPS faible).";
+                break;
+            case 3:
+                errorDiv.textContent = "Temps d'attente dépassé.";
+                break;
+            default:
+                errorDiv.textContent = "Une erreur inconnue est survenue.";
+        }
+    }
+</script>
+
+</body>
+</html>
